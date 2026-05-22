@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOID RUN</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;}
+canvas{display:block;width:100vw;height:100vh;}
+#ui{position:fixed;inset:0;pointer-events:none;z-index:20;}
+#hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:20px 30px;}
+.stat .sl{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:4px;color:rgba(0,255,80,0.45);text-transform:uppercase;}
+.stat .sv{font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:#00ff50;text-shadow:0 0 16px #00ff50, 0 0 40px #00ff5055;}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);pointer-events:all;}
+.screen.off{display:none;}
+.t1{font-family:'Orbitron',sans-serif;font-size:clamp(48px,9vw,110px);font-weight:900;color:#00ff50;letter-spacing:5px;text-shadow:0 0 30px #00ff50,0 0 80px #00ff5033;}
+.t2{font-family:'Orbitron',sans-serif;font-size:clamp(10px,1.8vw,15px);letter-spacing:14px;color:rgba(0,255,80,0.4);margin-top:4px;margin-bottom:50px;}
+.ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 40px;margin-bottom:46px;}
+.ct{font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:1px;color:rgba(255,255,255,0.38);}
+.ct b{color:#00ff50;}
+.btn{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;letter-spacing:7px;padding:15px 46px;background:transparent;border:2px solid #00ff50;color:#00ff50;cursor:pointer;transition:all .18s;text-transform:uppercase;}
+.btn:hover{background:#00ff50;color:#000;box-shadow:0 0 50px #00ff5088;}
+.btn.red{border-color:#ff1a33;color:#ff1a33;}
+.btn.red:hover{background:#ff1a33;color:#000;box-shadow:0 0 50px #ff1a3388;}
+.go-t{font-family:'Orbitron',sans-serif;font-size:clamp(52px,10vw,115px);font-weight:900;color:#ff1a33;letter-spacing:3px;text-shadow:0 0 40px #ff1a33;}
+.go-s{font-family:'Orbitron',sans-serif;font-size:16px;letter-spacing:3px;color:rgba(0,255,80,0.6);margin:16px 0 40px;}
+.go-s span{color:#fff;font-size:28px;font-weight:900;}
+#lf{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);text-align:center;opacity:0;transition:opacity .25s;pointer-events:none;}
+#lf .lb{font-family:'Orbitron',sans-serif;font-size:72px;font-weight:900;color:#fff;text-shadow:0 0 40px #00ff50,0 0 90px #00ff5044;letter-spacing:4px;}
+#lf .ls{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:10px;color:#00ff50;margin-top:4px;}
+#vign{position:fixed;inset:0;background:radial-gradient(ellipse at 50% 55%,transparent 30%,rgba(0,0,0,0.82) 100%);pointer-events:none;z-index:2;}
+#df{position:fixed;inset:0;opacity:0;background:rgba(255,15,40,0.55);pointer-events:none;z-index:15;transition:opacity .07s;}
+#sg{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);pointer-events:none;z-index:3;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vign"></div>
+<div id="sg"></div>
+<div id="df"></div>
+<div id="ui">
+  <div id="hud">
+    <div class="stat"><div class="sl">Score</div><div class="sv" id="hs">0</div></div>
+    <div class="stat" style="text-align:center"><div class="sl">Level</div><div class="sv" id="hl">1</div></div>
+    <div class="stat" style="text-align:right"><div class="sl">Speed</div><div class="sv" id="hv">1.0x</div></div>
+  </div>
+  <div id="lf"><div class="lb" id="lbn">LEVEL 2</div><div class="ls" id="lbs">FASTER</div></div>
+  <div id="screen-s" class="screen">
+    <div class="t1">VOID RUN</div>
+    <div class="t2">ENDLESS DESCENT</div>
+    <div class="ctrl-grid">
+      <div class="ct"><b>← / A</b> — left</div>
+      <div class="ct"><b>→ / D</b> — right</div>
+      <div class="ct"><b>AUTO</b> — speed increases</div>
+      <div class="ct"><b>EDGE</b> — you fall</div>
+    </div>
+    <button class="btn" onclick="startGame()">DROP IN</button>
+  </div>
+  <div id="screen-go" class="screen off">
+    <div class="go-t">GONE</div>
+    <div class="go-s">SCORE: <span id="gn">0</span></div>
+    <button class="btn red" onclick="restartGame()">AGAIN</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════
+//  VOID RUN — clean simple approach that actually works
+//
+//  The track is FLAT at Y=0. No tilting, no complex Y math.
+//  The downhill feeling comes from the CAMERA angle — it points
+//  forward and downward, so the track visually recedes below.
+//  The ball sits at a fixed position (center of screen, Z=2).
+//  The track + obstacles scroll toward +Z past the ball.
+//  Ball has real gravity: off edge = falls. On track = Y=BALL_R.
+// ═══════════════════════════════════════════════════════════
+
+const W       = 8.0;      // track width (wider to match bigger ball)
+const SLAB_T  = 0.5;      // slab thickness
+const BALL_R  = 0.72;     // ball radius — bigger
+const BALL_Z  = 2;        // ball's fixed Z position in world
+const SEG_Z   = 12;       // segment length in Z
+const POOL    = 22;       // segments in pool
+const SURF_Y  = SLAB_T/2; // top surface of track Y
+const ON_Y    = SURF_Y + BALL_R; // ball Y when on track
+
+// ─── RENDERER ────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const R = new THREE.WebGLRenderer({canvas, antialias:true});
+R.setPixelRatio(Math.min(devicePixelRatio, 2));
+R.setSize(innerWidth, innerHeight);
+R.shadowMap.enabled = true;
+R.shadowMap.type = THREE.PCFSoftShadowMap;
+R.toneMapping = THREE.ACESFilmicToneMapping;
+R.toneMappingExposure = 1.1;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+scene.fog = new THREE.Fog(0x000000, 40, 120);
+
+const CAM = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.1, 200);
+
+addEventListener('resize', () => {
+  R.setSize(innerWidth, innerHeight);
+  CAM.aspect = innerWidth/innerHeight;
+  CAM.updateProjectionMatrix();
+});
+
+// ─── LIGHTS ──────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x001f0a, 6));
+const sun = new THREE.DirectionalLight(0x88ffaa, 2.2);
+sun.position.set(0, 25, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left = -12;
+sun.shadow.camera.right = 12;
+sun.shadow.camera.top = 6;
+sun.shadow.camera.bottom = -6;
+scene.add(sun);
+const bLight = new THREE.PointLight(0x00ff55, 9, 8);
+scene.add(bLight);
+const rLight = new THREE.PointLight(0xff1133, 2.5, 22);
+scene.add(rLight);
+
+// ─── MATERIALS ───────────────────────────────────────────
+const trackM = new THREE.MeshStandardMaterial({
+  color:0x001208, roughness:0.15, metalness:0.95,
+  emissive:0x00120a, emissiveIntensity:1
+});
+const railM = new THREE.MeshStandardMaterial({
+  color:0x00ff55, roughness:0, metalness:1,
+  emissive:0x00ff55, emissiveIntensity:5
+});
+const ballM = new THREE.MeshStandardMaterial({
+  color:0xffffff, roughness:0, metalness:1,
+  emissive:0x00ff44, emissiveIntensity:0.12
+});
+
+// ─── BALL ────────────────────────────────────────────────
+const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 48, 48), ballM);
+ball.castShadow = true;
+scene.add(ball);
+
+// Three rings for visible spin — thicker on bigger ball
+const RING_COLORS = [0x00ff55, 0x00cc44, 0x00ff55];
+const RING_ROTS   = [0, Math.PI/2, Math.PI/4];
+RING_COLORS.forEach((col,i) => {
+  const m = new THREE.Mesh(
+    new THREE.TorusGeometry(BALL_R*0.95, BALL_R*0.075, 8, 48),
+    new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:3,roughness:0,metalness:1})
+  );
+  m.rotation.y = RING_ROTS[i];
+  ball.add(m);
+});
+// Outer glow — bigger
+ball.add(Object.assign(
+  new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_R*2.4,16,16),
+    new THREE.MeshBasicMaterial({color:0x00ff55,transparent:true,opacity:0.07,side:THREE.BackSide,depthWrite:false})
+  )
+));
+
+// ─── TRAIL ───────────────────────────────────────────────
+const TN = 130;
+const tPos = new Float32Array(TN*3);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute('position', new THREE.BufferAttribute(tPos,3));
+scene.add(new THREE.Points(tGeo, new THREE.PointsMaterial({
+  color:0x00ff55, size:0.13, transparent:true, opacity:0.35,
+  sizeAttenuation:true, depthWrite:false
+})));
+let tHead = 0;
+
+// ─── BACKGROUND STARS ────────────────────────────────────
+{
+  const p = new Float32Array(2800*3);
+  for(let i=0;i<p.length;i+=3){
+    p[i]  =(Math.random()-.5)*500;
+    p[i+1]=(Math.random()-.5)*200;
+    p[i+2]=(Math.random()-.5)*500;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0x113311,size:0.15,transparent:true,opacity:0.55})));
+}
+
+// ─── ABYSS PARTICLES ─────────────────────────────────────
+{
+  const p = new Float32Array(500*3);
+  for(let i=0;i<500;i++){
+    p[i*3]  =(Math.random()-.5)*30;
+    p[i*3+1]=-6-Math.random()*50;
+    p[i*3+2]=(Math.random()-.5)*300;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xff1133,size:0.09,transparent:true,opacity:0.3})));
+}
+
+// ─── SEGMENTS ────────────────────────────────────────────
+// Each segment is a Group. position.z is set each frame.
+// baseZ: the segment's Z in "track space" (starts at 0, goes negative)
+// worldZ = baseZ + scroll  (scroll increases over time)
+// We render the group at worldZ.
+
+const segs = [];
+let scroll  = 0;   // total distance scrolled
+let nextBZ  = 0;   // next segment baseZ (goes negative as we add more)
+let gIdx    = 0;   // global segment index
+
+function makeSeg(baseZ, idx) {
+  const g = new THREE.Group();
+
+  // Slab
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(W, SLAB_T, SEG_Z), trackM.clone());
+  slab.receiveShadow = true;
+  g.add(slab);
+
+  // Lane dashes
+  const dashM = new THREE.MeshBasicMaterial({color:0x00ff55,transparent:true,opacity:0.1});
+  for(let dz=-SEG_Z/2+1; dz<SEG_Z/2; dz+=1.5){
+    const d=new THREE.Mesh(new THREE.BoxGeometry(0.025,0.008,0.7),dashM);
+    d.position.set(0, SURF_Y+0.004, dz);
+    g.add(d);
+  }
+  // Side dashes
+  [-W/3, W/3].forEach(dx=>{
+    for(let dz=-SEG_Z/2+1; dz<SEG_Z/2; dz+=3){
+      const d=new THREE.Mesh(new THREE.BoxGeometry(0.015,0.006,0.5),dashM);
+      d.position.set(dx, SURF_Y+0.003, dz);
+      g.add(d);
+    }
+  });
+
+  // Rails
+  const rg = new THREE.BoxGeometry(0.14, 0.3, SEG_Z);
+  const lR = new THREE.Mesh(rg, railM);
+  lR.position.set(-W/2+0.07, SURF_Y+0.15, 0);
+  const rR = new THREE.Mesh(rg, railM);
+  rR.position.set( W/2-0.07, SURF_Y+0.15, 0);
+  g.add(lR, rR);
+
+  // Underside glow strips
+  const ugM = new THREE.MeshBasicMaterial({color:0x00ff55,transparent:true,opacity:0.15});
+  [-W/2+0.4, W/2-0.4].forEach(ux=>{
+    const ug=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.01,SEG_Z),ugM.clone());
+    ug.position.set(ux,-SLAB_T/2-0.005,0);
+    g.add(ug);
+  });
+
+  // Obstacles
+  const obs=[];
+  if(idx>4) addObs(g, idx, obs);
+
+  scene.add(g);
+  segs.push({g, baseZ, obs});
+}
+
+// ── Shared obstacle materials ─────────────────────────────
+const redM   = ()=>new THREE.MeshStandardMaterial({color:0xff1133,roughness:0.06,metalness:0.9,emissive:0xff0022,emissiveIntensity:3});
+const orangeM= ()=>new THREE.MeshStandardMaterial({color:0xff6600,roughness:0.06,metalness:0.9,emissive:0xff4400,emissiveIntensity:2.5});
+const pinkM  = ()=>new THREE.MeshStandardMaterial({color:0xff00aa,roughness:0.04,metalness:1,emissive:0xff0088,emissiveIntensity:3});
+
+// ── Minimum gap the ball needs to pass through ───────────
+const GAP = BALL_R * 2.6; // diameter + generous clearance
+
+function addObs(grp, idx, obs) {
+  const lv  = Math.min(level, 18);
+  const rnd = Math.random;
+  const budget = lv < 4 ? 1 : lv < 8 ? (rnd()<0.5?1:2) : 2;
+  const types = [];
+
+  const pool = ['wall'];
+  if(lv>=2) pool.push('gate');
+  if(lv>=3) pool.push('sawblade');
+  if(lv>=4) pool.push('stomper');
+  if(lv>=5) pool.push('pendulum');
+  if(lv>=6) pool.push('tunnel');
+  if(lv>=7) pool.push('zigzag');
+  if(lv>=9) pool.push('spinner_cross');
+  if(lv>=11)pool.push('wrecking_ball');
+
+  for(let b=0;b<budget;b++)
+    types.push(pool[Math.floor(rnd()*pool.length)]);
+
+  for(const type of types){
+    const zOff = (rnd()-.5)*SEG_Z*0.52;
+    switch(type){
+
+      case 'wall': {
+        // Max width leaves at least GAP clear on one side
+        const maxW = W - GAP - 0.1;
+        const bw = maxW * (0.35 + rnd()*0.5); // 35-85% of maxW
+        const bh = 1.1 + rnd()*(0.5+lv*0.07);
+        const bd = 0.65 + rnd()*0.4;
+        // Push it to one side so the gap is on the opposite side
+        const side = rnd()<0.5 ? -1 : 1;
+        const xCenter = side*(W/2 - bw/2); // flush against one wall
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), redM());
+        mesh.position.set(xCenter, SURF_Y+bh/2, zOff);
+        mesh.castShadow=true; grp.add(mesh);
+        // Slides stay on the same side — range is small so gap never closes
+        const slides = lv>=3 && rnd()<0.25+lv*0.025;
+        const maxRange = (W - bw)/2 - GAP/2;
+        const sx = slides && maxRange>0.1 ? (0.025+lv*0.007)*(rnd()<.5?1:-1) : 0;
+        obs.push({type:'wall', mesh, sx, range:Math.max(0,maxRange*0.7), ph:rnd()*Math.PI*2});
+        break;
+      }
+
+      case 'gate': {
+        // Gap is always >= GAP wide and fully within track bounds
+        const minGap = GAP + lv*0.01; // gap shrinks very slowly
+        const gapW = Math.max(minGap, W*(0.42 - lv*0.012));
+        // Clamp gap center so entire gap stays on track
+        const maxGapOffset = W/2 - gapW/2 - 0.05;
+        const gc = (rnd()*2-1) * maxGapOffset * 0.8;
+        const gh = 1.2 + lv*0.08;
+        const lw = W/2 + gc - gapW/2;
+        const rw = W/2 - gc - gapW/2;
+        const addGW=(width,cx)=>{
+          if(width<0.05) return;
+          const mesh=new THREE.Mesh(new THREE.BoxGeometry(width,gh,0.7),orangeM());
+          mesh.position.set(cx, SURF_Y+gh/2, zOff);
+          mesh.castShadow=true; grp.add(mesh);
+          // Gate walls do NOT slide — gap position must be predictable
+          obs.push({type:'wall', mesh, sx:0, range:0, ph:0});
+        };
+        addGW(lw, -W/2+lw/2);
+        addGW(rw,  W/2-rw/2);
+        break;
+      }
+
+      case 'sawblade': {
+        const r = Math.min(0.5+lv*0.035, W/2 - GAP - 0.15); // never so big it blocks
+        const geo = new THREE.CylinderGeometry(r,r,0.22,14);
+        const mesh = new THREE.Mesh(geo, pinkM());
+        for(let t=0;t<8;t++){
+          const tooth=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.16,r*0.4),pinkM());
+          const a=t/8*Math.PI*2;
+          tooth.position.set(Math.cos(a)*r*0.82,0,Math.sin(a)*r*0.82);
+          tooth.rotation.y=-a;
+          mesh.add(tooth);
+        }
+        // Position off-center so there's always a clear lane on one side
+        const side = rnd()<0.5 ? -1 : 1;
+        const xPos = side*(W/2 - r - 0.1);
+        mesh.position.set(xPos, SURF_Y+r*0.5+0.1, zOff);
+        mesh.castShadow=true; grp.add(mesh);
+        // Slide range limited so it never fully crosses to the other side
+        const slides = lv>=5 && rnd()<0.45;
+        const maxRange = W/2 - r - GAP/2 - 0.1;
+        const sx = slides && maxRange>0.1 ? (0.03+lv*0.008)*(rnd()<.5?1:-1) : 0;
+        obs.push({type:'sawblade', mesh, rotY:0.055+lv*0.005, sx, range:Math.max(0,maxRange), ph:rnd()*Math.PI*2});
+        break;
+      }
+
+      case 'stomper': {
+        // Head width = W*0.45 max, positioned off-center → always a side lane free
+        const pivot = new THREE.Group();
+        const headW = W * (0.3 + rnd()*0.15); // 30-45% of track width
+        const side = rnd()<0.5 ? -1 : 1;
+        const xPos = side * (W/2 - headW/2 - 0.05);
+        const baseH = SURF_Y + 3.8 + lv*0.08;
+        pivot.position.set(xPos, baseH, zOff);
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,3.5,8), redM());
+        rod.position.y=-1.75; pivot.add(rod);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(headW,0.45,0.65), redM());
+        head.position.y=-3.5; pivot.add(head);
+        grp.add(pivot);
+        obs.push({type:'stomper', mesh:pivot, head, baseY:baseH, ph:rnd()*Math.PI*2, spd:0.038+lv*0.004, amp:2.9+lv*0.1});
+        break;
+      }
+
+      case 'pendulum': {
+        // Arm length and swing angle capped so ball can pass underneath or wait
+        const pivot = new THREE.Group();
+        const armLen = 1.8 + lv*0.1;
+        // Centre the pendulum — ball passes when it swings away
+        pivot.position.set(0, SURF_Y+armLen+1.2, zOff);
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,armLen,8),
+          new THREE.MeshStandardMaterial({color:0x993300,roughness:0.3,metalness:0.8,emissive:0x441100,emissiveIntensity:1}));
+        arm.position.y=-armLen/2; pivot.add(arm);
+        const br = Math.min(0.42+lv*0.025, 0.65);
+        const pball = new THREE.Mesh(new THREE.SphereGeometry(br,20,20), orangeM());
+        pball.position.y=-armLen; pivot.add(pball);
+        grp.add(pivot);
+        // Max swing so ball tip stays within track (never hits rail)
+        const maxSwing = Math.asin((W/2 - br - 0.2) / armLen);
+        const swing = Math.min(0.5+lv*0.03, maxSwing * 0.85);
+        obs.push({type:'pendulum', mesh:pivot, pball, ph:rnd()*Math.PI*2, spd:0.024+lv*0.003, swing, armLen, br});
+        break;
+      }
+
+      case 'tunnel': {
+        // Roof height = exactly BALL_R*2 + 0.35 clearance — tight but always passable
+        const clearance = 0.35;
+        const roofY = SURF_Y + BALL_R*2 + clearance;
+        const depth = 2.0 + rnd()*0.8;
+        const pw = 0.5;
+        // Pillars on each side
+        [-W/2+pw/2, W/2-pw/2].forEach(px=>{
+          const ph = roofY - SURF_Y;
+          const mesh=new THREE.Mesh(new THREE.BoxGeometry(pw,ph,depth),redM());
+          mesh.position.set(px, SURF_Y+ph/2, zOff);
+          grp.add(mesh);
+          obs.push({type:'wall',mesh,sx:0,range:0,ph:0});
+        });
+        const roof=new THREE.Mesh(new THREE.BoxGeometry(W,0.5,depth),orangeM());
+        roof.position.set(0, roofY+0.25, zOff);
+        grp.add(roof);
+        obs.push({type:'wall',mesh:roof,sx:0,range:0,ph:0});
+        break;
+      }
+
+      case 'zigzag': {
+        // Each pillar takes up < half the width — always passable on the other side
+        const cnt = 2 + Math.floor(rnd()*3);
+        const pillarW = W * Math.min(0.38, 0.22+lv*0.01); // max 38% of track
+        const span = SEG_Z * 0.52;
+        for(let i=0;i<cnt;i++){
+          const side = (i%2===0 ? -1 : 1);
+          const zh = 1.2 + lv*0.055;
+          const xPos = side*(W/2 - pillarW/2 - 0.05); // flush to one side
+          const mesh=new THREE.Mesh(new THREE.BoxGeometry(pillarW,zh,0.55),redM());
+          mesh.position.set(xPos, SURF_Y+zh/2, -span/2+i*(span/Math.max(cnt-1,1)));
+          mesh.castShadow=true; grp.add(mesh);
+          // No sliding on zigzag — pattern must be readable
+          obs.push({type:'wall',mesh,sx:0,range:0,ph:0});
+        }
+        break;
+      }
+
+      case 'spinner_cross': {
+        // Arms are each W*0.35 long max — the cross is in the centre
+        // Ball must time passage to go between arms, but arms never reach the rails
+        const pivot = new THREE.Group();
+        const xPos = (rnd()-.5)*W*0.25; // near centre
+        pivot.position.set(xPos, SURF_Y+0.65, zOff);
+        const armW = Math.min(W*0.38, W/2-GAP/2-0.1)*2; // total arm span leaves gap on each side
+        const armH = 0.55, armD = 0.48;
+        [0, Math.PI/2].forEach(ry=>{
+          const arm=new THREE.Mesh(new THREE.BoxGeometry(armW,armH,armD),pinkM());
+          arm.rotation.y=ry; pivot.add(arm);
+        });
+        grp.add(pivot);
+        obs.push({type:'spinner_cross', mesh:pivot, rotY:(0.038+lv*0.004)*(rnd()<.5?1:-1)});
+        break;
+      }
+
+      case 'wrecking_ball': {
+        // Swing range = W*0.32 max per side — never reaches both rails simultaneously
+        const pivot = new THREE.Group();
+        pivot.position.set(0, SURF_Y+5.5+lv*0.12, zOff);
+        const chainMat=new THREE.MeshStandardMaterial({color:0x888888,roughness:0.4,metalness:0.9});
+        const chainLen=3.8+lv*0.12;
+        for(let c=0;c<6;c++){
+          const link=new THREE.Mesh(new THREE.TorusGeometry(0.14,0.05,6,10),chainMat);
+          link.rotation.z=Math.PI/2;
+          link.position.y=-(c/5)*chainLen*0.7;
+          pivot.add(link);
+        }
+        const wr = Math.min(0.65+lv*0.04, 0.9);
+        // Max swing so ball never reaches rail: W/2 - wr - 0.1
+        const maxSwing = W/2 - wr - 0.15;
+        const swing = maxSwing * 0.75; // 75% of max — always leaves edge passable
+        const wb=new THREE.Mesh(new THREE.SphereGeometry(wr,24,24),orangeM());
+        wb.position.y=-chainLen; pivot.add(wb);
+        grp.add(pivot);
+        obs.push({type:'wrecking_ball', mesh:pivot, wb, ph:rnd()*Math.PI*2, spd:0.018+lv*0.003, swing, wr});
+        break;
+      }
+    }
+  }
+}
+
+function initSegs(){
+  segs.forEach(s=>scene.remove(s.g));
+  segs.length=0;
+  scroll=0; nextBZ=0; gIdx=0;
+  for(let i=0;i<POOL;i++){makeSeg(nextBZ,gIdx++); nextBZ-=SEG_Z;}
+}
+
+function placeSegs(){
+  for(const s of segs){
+    const wz = s.baseZ + scroll;
+    s.g.position.set(0, 0, wz);
+  }
+}
+
+function recycleSegs(){
+  for(let i=segs.length-1;i>=0;i--){
+    if(segs[i].baseZ+scroll > SEG_Z*3){
+      scene.remove(segs[i].g);
+      segs.splice(i,1);
+    }
+  }
+  while(segs.length<POOL){makeSeg(nextBZ,gIdx++); nextBZ-=SEG_Z;}
+}
+
+let elapsed=0;
+function tickObs(dt){
+  elapsed+=dt;
+  for(const s of segs){
+    for(const o of s.obs){
+      switch(o.type){
+        case 'wall':
+          if(o.sx!==0) o.mesh.position.x=Math.sin(elapsed*o.sx*55+o.ph)*o.range;
+          break;
+        case 'sawblade':
+          o.mesh.rotation.y += o.rotY*dt*60;
+          if(o.sx!==0) o.mesh.position.x=Math.sin(elapsed*o.sx*55+o.ph)*o.range;
+          break;
+        case 'stomper': {
+          // Piston slams down, pauses, lifts back up
+          const t=elapsed*o.spd*60+o.ph;
+          const frac=0.5-0.5*Math.cos(t); // 0..1
+          const newY=o.baseY - frac*o.amp;
+          o.mesh.position.y=newY;
+          break;
+        }
+        case 'pendulum': {
+          const angle=Math.sin(elapsed*o.spd*60+o.ph)*o.swing;
+          o.mesh.rotation.z=angle;
+          break;
+        }
+        case 'spinner_cross':
+          o.mesh.rotation.y += o.rotY*dt*60;
+          break;
+        case 'wrecking_ball': {
+          const angle=Math.sin(elapsed*o.spd*60+o.ph);
+          o.mesh.position.x=angle*o.swing;
+          break;
+        }
+      }
+    }
+  }
+}
+
+// ─── COLLISION ───────────────────────────────────────────
+const _wp=new THREE.Vector3();
+function hitCheck(){
+  const bx=ball.position.x, by=ball.position.y, bz=ball.position.z;
+  for(const s of segs){
+    for(const o of s.obs){
+      // Get the actual collidable mesh (could be child for pendulum/stomper/wrecking ball)
+      const checkMeshes=[];
+      if(o.type==='pendulum')      checkMeshes.push({m:o.pball, r:o.br});
+      else if(o.type==='stomper')  checkMeshes.push({m:o.head,  box:true});
+      else if(o.type==='wrecking_ball') checkMeshes.push({m:o.wb, r:o.wr});
+      else if(o.type==='sawblade') checkMeshes.push({m:o.mesh,  r:null, box:true});
+      else if(o.type==='spinner_cross') checkMeshes.push({m:o.mesh, box:true});
+      else checkMeshes.push({m:o.mesh, box:true});
+
+      for(const {m,r,box} of checkMeshes){
+        m.getWorldPosition(_wp);
+        if(r!=null){
+          // Sphere vs sphere
+          const dx=bx-_wp.x,dy=by-_wp.y,dz=bz-_wp.z;
+          if(dx*dx+dy*dy+dz*dz < (BALL_R+r)*(BALL_R+r)){die();return;}
+        } else {
+          // AABB vs sphere
+          const p=m.geometry.parameters;
+          const hw=(p.width||p.radiusTop*2||1)/2+BALL_R*0.78;
+          const hh=(p.height||1)/2+BALL_R*0.78;
+          const hd=(p.depth||p.radiusTop*2||1)/2+BALL_R*0.78;
+          if(Math.abs(bx-_wp.x)<hw&&Math.abs(by-_wp.y)<hh&&Math.abs(bz-_wp.z)<hd){die();return;}
+        }
+      }
+    }
+  }
+}
+
+// ─── GAME STATE ──────────────────────────────────────────
+let running=false, score=0, level=1, baseSpd=0.16, spd=0.16;
+let bx=0, by=ON_Y, bvy=0, onGnd=true, dead=false, dvy=0;
+let fr=0;
+const GRAV=-0.058;
+const keys={l:false,r:false};
+const LAT=0.053;
+
+// Camera smooth
+let cx=0, cy=0, cz=0;
+let cTx=0, cTy=0, cTz=0;
+
+// ─── INPUT ───────────────────────────────────────────────
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft' ||e.key==='a'||e.key==='A'){keys.l=true;e.preventDefault();}
+  if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){keys.r=true;e.preventDefault();}
+});
+addEventListener('keyup',e=>{
+  if(e.key==='ArrowLeft' ||e.key==='a'||e.key==='A') keys.l=false;
+  if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') keys.r=false;
+});
+let tx0=0;
+addEventListener('touchstart',e=>{tx0=e.touches[0].clientX;},{passive:true});
+addEventListener('touchmove',e=>{const dx=e.touches[0].clientX-tx0;keys.l=dx<-10;keys.r=dx>10;},{passive:true});
+addEventListener('touchend',()=>{keys.l=false;keys.r=false;});
+
+// ─── DEATH ───────────────────────────────────────────────
+function die(){
+  if(dead) return;
+  dead=true; onGnd=false; dvy=0.03;
+  const f=document.getElementById('df');
+  f.style.transition='none'; f.style.opacity=1;
+  setTimeout(()=>{f.style.transition='opacity 1.5s';f.style.opacity=0;},70);
+  setTimeout(()=>{
+    document.getElementById('gn').textContent=Math.floor(score);
+    document.getElementById('screen-go').classList.remove('off');
+  },2500);
+}
+
+// ─── LEVEL ───────────────────────────────────────────────
+function chkLvl(){
+  const nl=1+Math.floor(score/850);
+  if(nl>level){
+    level=nl;
+    spd=baseSpd*(1+(level-1)*0.20);
+    document.getElementById('hl').textContent=level;
+    const el=document.getElementById('lf');
+    document.getElementById('lbn').textContent='LEVEL '+level;
+    const tags=['FASTER','DANGER','LETHAL','INSANE','VOID','MAXIMUM','UNSTOPPABLE','GOD'];
+    document.getElementById('lbs').textContent=tags[Math.min(level-2,tags.length-1)]||'';
+    el.style.opacity=1;
+    setTimeout(()=>el.style.opacity=0,2200);
+  }
+}
+
+// ─── START / RESTART ─────────────────────────────────────
+function startGame(){
+  document.getElementById('screen-s').classList.add('off');
+  reset();
+}
+function restartGame(){
+  document.getElementById('screen-go').classList.add('off');
+  reset();
+}
+function reset(){
+  score=0;level=1;spd=baseSpd;
+  bx=0;by=ON_Y;bvy=0;onGnd=true;dead=false;dvy=0;fr=0;elapsed=0;
+  document.getElementById('hs').textContent='0';
+  document.getElementById('hl').textContent='1';
+  document.getElementById('hv').textContent='1.0x';
+  initSegs();
+  ball.position.set(0,ON_Y,BALL_Z);
+  ball.rotation.set(0,0,0);
+  // camera init
+  cx=0; cy=ON_Y+4; cz=BALL_Z+9;
+  cTx=cx; cTy=cy; cTz=cz;
+  CAM.position.set(cx,cy,cz);
+  running=true;
+}
+
+// ─── CAMERA ──────────────────────────────────────────────
+// Camera sits ABOVE and BEHIND the ball.
+// It looks forward (negative Z) AND downward — this creates
+// the downhill perspective. The farther ahead you look, the
+// lower the track appears.
+function updateCam(dt){
+  // Target position: behind and well above ball
+  cTx = bx*0.18;
+  cTy = by + 4.2;
+  cTz = BALL_Z + 9.5;
+  const k=0.07*dt;
+  cx+=(cTx-cx)*k; cy+=(cTy-cy)*k*0.75; cz+=(cTz-cz)*k;
+  CAM.position.set(cx,cy,cz);
+  // Look at a point FAR ahead (negative Z) and BELOW current surface
+  // This is what creates the "going downhill" feel
+  CAM.lookAt(bx*0.3, by - 4.5, BALL_Z - 28);
+}
+
+// ─── MAIN LOOP ───────────────────────────────────────────
+let lastT=0;
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt=Math.min((t-lastT)/16.667,3);
+  lastT=t;
+
+  if(!running){R.render(scene,CAM);return;}
+  fr++;
+
+  if(!dead){
+    // Scroll world
+    const dz=spd*dt;
+    scroll+=dz;
+    placeSegs();
+
+    // Score + level
+    score+=dz*spd*4.5;
+    document.getElementById('hs').textContent=Math.floor(score);
+    document.getElementById('hv').textContent=(spd/baseSpd).toFixed(1)+'x';
+    chkLvl();
+
+    // Lateral
+    if(keys.l) bx-=LAT*spd*5.5*dt;
+    if(keys.r) bx+=LAT*spd*5.5*dt;
+
+    // Is ball over the track?
+    const over = Math.abs(bx) < W/2 - BALL_R*0.15;
+
+    if(over){
+      if(!onGnd && by < ON_Y+0.15){
+        // land back
+        by=ON_Y; bvy=0; onGnd=true;
+      }
+      if(onGnd){
+        by=ON_Y; bvy=0;
+      } else {
+        bvy+=GRAV*dt;
+      }
+    } else {
+      onGnd=false;
+      bvy+=GRAV*dt;
+      by+=bvy*dt;
+      if(by < ON_Y-6) die();
+    }
+
+    ball.position.set(bx, by, BALL_Z);
+
+    // Rolling
+    ball.rotation.x -= dz/BALL_R;
+    const lv=(keys.l?-1:0)+(keys.r?1:0);
+    ball.rotation.z -= lv*LAT*spd*5.5*dt/BALL_R;
+
+    // Trail
+    if(fr%2===0){
+      const i=(tHead++)%TN;
+      tPos[i*3]  =bx+(Math.random()-.5)*.04;
+      tPos[i*3+1]=by-BALL_R*.5;
+      tPos[i*3+2]=BALL_Z;
+      tGeo.attributes.position.needsUpdate=true;
+    }
+
+    bLight.position.set(bx,by+0.8,BALL_Z+0.5);
+    rLight.position.set(bx+1.5,by-0.5,BALL_Z+4);
+
+    hitCheck();
+    tickObs(dt/60);
+    recycleSegs();
+
+  } else {
+    // Death fall
+    dvy-=0.02*dt;
+    by+=dvy*dt;
+    ball.position.set(bx+(Math.random()-.5)*.025, by, BALL_Z);
+    ball.rotation.x+=0.22*dt;
+    ball.rotation.z+=0.13*dt;
+    // Keep scrolling for drama
+    scroll+=spd*0.22*dt;
+    placeSegs();
+  }
+
+  updateCam(dt);
+  R.render(scene,CAM);
+}
+
+// ─── INIT ────────────────────────────────────────────────
+initSegs();
+ball.position.set(0,ON_Y,BALL_Z);
+CAM.position.set(0,ON_Y+4,BALL_Z+9.5);
+CAM.lookAt(0,ON_Y-4.5,BALL_Z-28);
+R.render(scene,CAM);
+requestAnimationFrame(t=>{lastT=t;loop(t);});
+</script>
+</body>
+</html>
